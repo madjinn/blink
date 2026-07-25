@@ -36,7 +36,20 @@
 
 + (NSString *)_valueForKey:(NSString *)key {
   NSBundle *bundle = [NSBundle bundleForClass:[XCConfig self]];
-  return [bundle objectForInfoDictionaryKey:key];
+  id value = [bundle objectForInfoDictionaryKey:key];
+  if (![value isKindOfClass:[NSString class]]) {
+    return @"";
+  }
+
+  NSString *string = [(NSString *)value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+
+  // Xcode may leave undefined build settings as literal placeholders in processed Info.plists.
+  if (([string hasPrefix:@"$("] && [string hasSuffix:@")"]) ||
+      ([string hasPrefix:@"${"] && [string hasSuffix:@"}"])) {
+    return @"";
+  }
+
+  return string;
 }
 
 + (NSString *) infoPlistRevCatPubliKey {
@@ -64,7 +77,8 @@
 }
 
 + (NSString *) infoPlistFullCloudID {
-  return [NSString stringWithFormat:@"iCloud.%@", [self infoPlistCloudID]];
+  NSString *cloudID = [self infoPlistCloudID];
+  return cloudID.length > 0 ? [NSString stringWithFormat:@"iCloud.%@", cloudID] : @"";
 }
 
 + (NSString *) infoPlistGroupID {
@@ -72,7 +86,8 @@
 }
 
 + (NSString *) infoPlistFullGroupID {
-  return [NSString stringWithFormat:@"group.%@", [self infoPlistGroupID]];
+  NSString *groupID = [self infoPlistGroupID];
+  return groupID.length > 0 ? [NSString stringWithFormat:@"group.%@", groupID] : @"";
 }
 
 

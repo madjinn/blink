@@ -13,6 +13,10 @@ TEAM_ID = A2H2CL32AG
 
 // BUNDLE_ID is used as name for BUNDLE_IDENTIFIER
 BUNDLE_ID = sh.blink.blinkshell
+
+// APP_DISPLAY_NAME controls CFBundleDisplayName
+APP_DISPLAY_NAME = Blink
+
 GROUP_ID  = sh.blink
 
 // CLOUD_ID is used as name for iCloud (prefix icloud. is added)
@@ -23,6 +27,9 @@ CLOUD_ID = sh.blink.blinkshell
 KEYCHAIN_ID1 = sh.blink
 //KEYCHAIN_ID2 = Com.CarlosCabanero.BlinkShell
 // if you want to build without keychain, please remove the section in xCode
+
+// Optional RevenueCat public SDK key. Leave empty to disable hosted subscription features.
+REVCAT_PUBKEY =
 
 
 // BLINK_PUBLISHING_OPTION_DEVELOPER

@@ -81,8 +81,9 @@ def main() -> None:
             plistlib.dump(info, stream, fmt=plistlib.FMT_BINARY, sort_keys=False)
 
     if patched == 0:
-        raise SystemExit("OpenSSL did not contain a minimum version newer than 17.6")
-    print(f"Patched {patched} OpenSSL load commands to iOS {TARGET_VERSION}")
+        print(f"OpenSSL already has minimum iOS {TARGET_VERSION} or lower")
+    else:
+        print(f"Patched {patched} OpenSSL load commands to iOS {TARGET_VERSION}")
 
 
 if __name__ == "__main__":

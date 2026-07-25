@@ -57,6 +57,10 @@ static BKiCloudSyncHandler *sharedHandler = nil;
 
 + (instancetype)sharedHandler
 {
+  if ([XCConfig infoPlistCloudID].length == 0) {
+    return nil;
+  }
+
   if ([BKUserConfigurationManager userSettingsValueForKey:BKUserConfigiCloud]) {
     if (sharedHandler == nil) {
       sharedHandler = [[self alloc] init];
@@ -75,6 +79,10 @@ static BKiCloudSyncHandler *sharedHandler = nil;
   if (self) {
     
     BKiCloudContainerIdentifier = [XCConfig infoPlistFullCloudID];
+    if (BKiCloudContainerIdentifier.length == 0) {
+      return nil;
+    }
+
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(checkForReachabilityAndSync:) name:kReachabilityChangedNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(checkForReachabilityAndSync:) name:UIApplicationDidBecomeActiveNotification object:nil];
     _internetReachable = [Reachability reachabilityForInternetConnection];

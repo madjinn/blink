@@ -43,16 +43,22 @@ class KBAccessoryView: UIInputView {
 
     self.frame.size.height = _kbView.intrinsicContentSize.height
     
+#if compiler(>=6.2)
     if #available(iOS 26.0, *) {
       _setupGlassMaterialEffect()
     } else {
       // Earlier iOS versions: Add kbView directly to UIInputView
       addSubview(_kbView)
     }
+#else
+    // SDKs before iOS 26 do not know UIGlassEffect.
+    addSubview(_kbView)
+#endif
 
     _kbView.translatesAutoresizingMaskIntoConstraints = false
     let margin: CGFloat = 0.0
     
+#if compiler(>=6.2)
     if #available(iOS 26.0, *) {
       guard let glassEffectView = _glassEffectView else { return }
       NSLayoutConstraint.activate([
@@ -69,12 +75,21 @@ class KBAccessoryView: UIInputView {
         _kbView.bottomAnchor.constraint(equalTo: bottomAnchor)
       ])
     }
+#else
+    NSLayoutConstraint.activate([
+      _kbView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
+      _kbView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
+      //_kbView.topAnchor.constraint(equalTo: topAnchor),
+      _kbView.bottomAnchor.constraint(equalTo: bottomAnchor)
+    ])
+#endif
   }
   
   required init?(coder: NSCoder) {
     return nil
   }
   
+#if compiler(>=6.2)
   @available(iOS 26.0, *)
   private func _createGlassEffect() -> UIGlassEffect {
     let glassEffect = UIGlassEffect()
@@ -84,6 +99,7 @@ class KBAccessoryView: UIInputView {
     
     return glassEffect
   }
+#endif
   
 //  Commented because I think we can go with a general system setting for now.
 //  Update effect based on keyboard settings.
@@ -114,6 +130,7 @@ class KBAccessoryView: UIInputView {
 //    }
 //  }
   
+#if compiler(>=6.2)
   @available(iOS 26.0, *)
   private func _setupGlassMaterialEffect() {
     let glassEffectView = UIVisualEffectView()
@@ -138,6 +155,7 @@ class KBAccessoryView: UIInputView {
       glassEffectView.effect = glassEffect
     }
   }
+#endif
   
   override var intrinsicContentSize: CGSize {
     return CGSize(width: -1, height: _kbView.intrinsicContentSize.height)

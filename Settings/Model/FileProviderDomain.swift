@@ -32,6 +32,7 @@
 
 import Foundation
 import FileProvider
+import BlinkConfig
 
 #if targetEnvironment(macCatalyst)
 
@@ -233,6 +234,10 @@ class FileProviderDomain: Identifiable, Codable, Equatable {
 
 extension _NSFileProviderManager {
   @objc static func syncWithBKHosts() {
+    guard !XCConfig.infoPlistGroupID().isEmpty else {
+      return
+    }
+
     getDomainsWithCompletionHandler { nsDomains, err in
       guard err == nil else {
         print("get domains error", err!)

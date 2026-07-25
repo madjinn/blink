@@ -2,6 +2,12 @@ name: TestFlight
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Simulator smoke test"]
+    branches:
+      - personal-testflight
+    types:
+      - completed
 
 permissions:
   contents: read
@@ -13,6 +19,7 @@ concurrency:
 jobs:
   build-and-upload:
     name: Sign and upload to TestFlight
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: macos-26
     timeout-minutes: 120
 
@@ -36,6 +43,7 @@ jobs:
       - name: Check out Blink and submodules
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: recursive
 
       - name: Resolve frameworks
@@ -46,6 +54,9 @@ jobs:
 
       - name: Configure personal build
         run: cp personal_setup.xcconfig developer_setup.xcconfig
+
+      - name: Set monotonic build number
+        run: echo "REMOTE_SHELL_BUILD_NUMBER=$((200900000 + GITHUB_RUN_NUMBER * 1000 + GITHUB_RUN_ATTEMPT))" >> "$GITHUB_ENV"
 
       - name: Install signing certificate and profile
         env:
@@ -101,7 +112,7 @@ jobs:
             CODE_SIGN_IDENTITY='Apple Distribution' \
             DEVELOPMENT_TEAM=2S8DQ977WP \
             PERSONAL_PROFILE_UUID="$PROFILE_UUID" \
-            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            CURRENT_PROJECT_VERSION="$REMOTE_SHELL_BUILD_NUMBER" \
             OTHER_CODE_SIGN_FLAGS="--keychain $SIGNING_KEYCHAIN" \
             archive | tee "$RUNNER_TEMP/xcodebuild.log"
 
@@ -111,9 +122,16 @@ jobs:
           test -d "$app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = "dev.madjinn.remoteshell"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$app/Info.plist")" = "RemoteShell Dev"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")" = "$REMOTE_SHELL_BUILD_NUMBER"
           test "$(/usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$app/Info.plist")" = "true"
           test "$(/usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$app/Info.plist")" = "true"
           test ! -d "$app/PlugIns" || ! find "$app/PlugIns" -name '*.appex' -print -quit | grep -q .
+
+          config_plist="$app/Frameworks/BlinkConfig.framework/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :BLINK_GROUP_ID' "$config_plist")" = ""
+          test "$(/usr/libexec/PlistBuddy -c 'Print :BLINK_CLOUD_ID' "$config_plist")" = ""
+          test "$(/usr/libexec/PlistBuddy -c 'Print :BLINK_REVCAT_PUBKEY' "$config_plist")" = ""
+
           codesign --verify --deep --strict --verbose=2 "$app"
 
       - name: Export IPA

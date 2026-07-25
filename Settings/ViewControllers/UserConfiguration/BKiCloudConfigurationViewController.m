@@ -34,6 +34,7 @@
 
 #import "BKiCloudConfigurationViewController.h"
 #import "BKUserConfigurationManager.h"
+#import <BlinkConfig/XCConfig.h>
 #import "Blink-Swift.h"
 
 @interface BKiCloudConfigurationViewController ()
@@ -53,6 +54,16 @@
 
 - (void)setupUI
 {
+  if ([XCConfig infoPlistCloudID].length == 0) {
+    [_toggleiCloudSync setOn:NO];
+    [_toggleiCloudSync setEnabled:NO];
+    [_toggleiCloudKeysSync setOn:NO];
+    [_toggleiCloudKeysSync setEnabled:NO];
+    [BKUserConfigurationManager setUserSettingsValue:NO forKey:BKUserConfigiCloud];
+    [BKUserConfigurationManager setUserSettingsValue:NO forKey:BKUserConfigiCloudKeys];
+    return;
+  }
+
   [_toggleiCloudSync setOn:[BKUserConfigurationManager userSettingsValueForKey:@"iCloudSync"]];
   [_toggleiCloudKeysSync setOn:[BKUserConfigurationManager userSettingsValueForKey:@"iCloudKeysSync"]];
 }

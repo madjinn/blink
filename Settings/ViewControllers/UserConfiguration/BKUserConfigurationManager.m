@@ -44,10 +44,10 @@ NSString *const BKUserConfigChangedNotification = @"BKUserConfigChangedNotificat
 
 + (void)setUserSettingsValue:(BOOL)value forKey:(NSString *)key
 {
-  NSMutableDictionary *userSettings = [NSMutableDictionary dictionaryWithDictionary:[[NSUserDefaults standardUserDefaults] objectForKey:@"userSettings"]];
-  if (userSettings == nil) {
-    userSettings = [NSMutableDictionary dictionary];
-  }
+  NSDictionary *existingSettings = [[NSUserDefaults standardUserDefaults] objectForKey:@"userSettings"];
+  NSMutableDictionary *userSettings = existingSettings != nil
+    ? [NSMutableDictionary dictionaryWithDictionary:existingSettings]
+    : [NSMutableDictionary dictionary];
   [userSettings setObject:[NSNumber numberWithBool:value] forKey:key];
   [[NSUserDefaults standardUserDefaults] setObject:userSettings forKey:@"userSettings"];
   

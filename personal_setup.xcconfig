@@ -5,6 +5,12 @@ BUNDLE_ID = dev.madjinn.remoteshell
 KEYCHAIN_ID1 = dev.madjinn.remoteshell
 APP_DISPLAY_NAME = RemoteShell Dev
 
+// Terminal-only personal builds intentionally omit App Group, iCloud, Push,
+// File Provider extensions, and RevenueCat-hosted subscription services.
+GROUP_ID =
+CLOUD_ID =
+REVCAT_PUBKEY =
+
 SWIFT_ACTIVE_COMPILATION_CONDITIONS[config=Debug] = BLINK_PUBLISHING_OPTION_DEVELOPER
 SWIFT_ACTIVE_COMPILATION_CONDITIONS[config=Release] = BLINK_PUBLISHING_OPTION_TESTFLIGHT
 
