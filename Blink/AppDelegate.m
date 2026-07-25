@@ -32,6 +32,7 @@
 #import "AppDelegate.h"
 #import "BKiCloudSyncHandler.h"
 #import <BlinkConfig/BlinkPaths.h>
+#import <BlinkConfig/XCConfig.h>
 #import "BLKDefaults.h"
 #import <BlinkConfig/BKHosts.h>
 #import <BlinkConfig/BKPubKey.h>
@@ -130,7 +131,9 @@ void __setupProcessEnv(void) {
 
   [UIApplication sharedApplication].applicationSupportsShakeToEdit = NO;
   
-  [_NSFileProviderManager syncWithBKHosts];
+  if ([XCConfig infoPlistGroupID].length > 0) {
+    [_NSFileProviderManager syncWithBKHosts];
+  }
   
   [PurchasesUserModelObjc preparePurchasesUserModel];
   

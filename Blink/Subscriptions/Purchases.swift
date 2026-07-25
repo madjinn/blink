@@ -77,7 +77,16 @@ fileprivate extension EntitlementPeriodType {
   }
 }
 
-func configureRevCat() {
+func revCatAvailable() -> Bool {
+  !XCConfig.infoPlistRevCatPubliKey().isEmpty
+}
+
+@discardableResult
+func configureRevCat() -> Bool {
+  guard revCatAvailable() else {
+    return false
+  }
+
   Purchases.logLevel = .debug
   let cfg = Configuration
     .builder(withAPIKey: XCConfig.infoPlistRevCatPubliKey())
@@ -86,4 +95,5 @@ func configureRevCat() {
     .build()
 
   Purchases.configure(with: cfg)
+  return true
 }

@@ -42,6 +42,7 @@ NSString *__iCloudsDriveDocumentsPath = nil;
 + (NSString *)homePath {
   if (__homePath == nil) {
     __homePath = [[self groupContainerPath] stringByAppendingPathComponent:@"home"];
+    [self _ensureFolderAtPath:__homePath];
   }
 
   return __homePath;
@@ -66,12 +67,17 @@ NSString *__iCloudsDriveDocumentsPath = nil;
 
 + (NSString *)groupContainerPath {
   if (__groupContainerPath == nil) {
-
     NSString *groupID = [XCConfig infoPlistFullGroupID];
-
     NSFileManager *fm = [NSFileManager defaultManager];
-    NSString *path = [fm containerURLForSecurityApplicationGroupIdentifier:groupID].path;
-    __groupContainerPath = path;
+    NSString *path = nil;
+
+    if ([XCConfig infoPlistGroupID].length > 0) {
+      path = [fm containerURLForSecurityApplicationGroupIdentifier:groupID].path;
+    }
+
+    // Builds without a File Provider extension do not need an App Group.
+    // Keep their home directory in the normal application container.
+    __groupContainerPath = path.length > 0 ? path : NSHomeDirectory();
   }
   return __groupContainerPath;
 }
@@ -79,9 +85,18 @@ NSString *__iCloudsDriveDocumentsPath = nil;
 + (NSString *)iCloudDriveDocuments
 {
   if (__iCloudsDriveDocumentsPath == nil) {
+    if ([XCConfig infoPlistCloudID].length == 0) {
+      return nil;
+    }
+
     NSString *iCloudID = [XCConfig infoPlistFullCloudID];
     NSFileManager *fm = [NSFileManager defaultManager];
-    NSString *path = [[fm URLForUbiquityContainerIdentifier:iCloudID] URLByAppendingPathComponent:@"Documents"].path;
+    NSURL *containerURL = [fm URLForUbiquityContainerIdentifier:iCloudID];
+    if (containerURL == nil) {
+      return nil;
+    }
+
+    NSString *path = [containerURL URLByAppendingPathComponent:@"Documents"].path;
     [self _ensureFolderAtPath:path];
     __iCloudsDriveDocumentsPath = path;
   }
@@ -91,8 +106,13 @@ NSString *__iCloudsDriveDocumentsPath = nil;
 
 + (void)linkICloudDriveIfNeeded
 {
+  NSString *iCloudDocuments = [self iCloudDriveDocuments];
+  if (iCloudDocuments.length == 0) {
+    return;
+  }
+
   [self _linkAtPath:[[self homePath] stringByAppendingPathComponent:@"iCloud"]
-    destinationPath:[self iCloudDriveDocuments]];
+    destinationPath:iCloudDocuments];
 }
 
 + (void)linkDocumentsIfNeeded {
@@ -101,6 +121,10 @@ NSString *__iCloudsDriveDocumentsPath = nil;
 }
 
 + (void)_linkAtPath:(NSString *)path destinationPath:(NSString *)destinationPath {
+  if (path.length == 0 || destinationPath.length == 0) {
+    return;
+  }
+
   NSFileManager *fm = [NSFileManager defaultManager];
   
   // Don't use fileExists as that would traverse the symlink.
@@ -154,6 +178,10 @@ NSString *__iCloudsDriveDocumentsPath = nil;
 }
 
 + (void)_ensureFolderAtPath:(NSString *)path {
+  if (path.length == 0) {
+    return;
+  }
+
   BOOL isDir = NO;
   NSFileManager *fm = [NSFileManager defaultManager];
   if ([fm fileExistsAtPath:path isDirectory:&isDir]) {

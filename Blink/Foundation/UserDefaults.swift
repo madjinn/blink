@@ -34,6 +34,12 @@ import Foundation
 import BlinkConfig
 
 extension UserDefaults {
-  static var suiteName: String  { XCConfig.infoPlistFullGroupID() }
-  static let suite = UserDefaults(suiteName: suiteName)!
+  static var suiteName: String? {
+    guard !XCConfig.infoPlistGroupID().isEmpty else {
+      return nil
+    }
+    return XCConfig.infoPlistFullGroupID()
+  }
+
+  static let suite = suiteName.flatMap { UserDefaults(suiteName: $0) } ?? .standard
 }

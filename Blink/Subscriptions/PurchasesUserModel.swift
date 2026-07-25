@@ -62,7 +62,9 @@ class PurchasesUserModel: ObservableObject {
   }
 
   private init() {
-    refreshProducts()
+    if revCatAvailable() {
+      refreshProducts()
+    }
   }
 
   static let shared = PurchasesUserModel()
@@ -503,7 +505,10 @@ extension StoreProduct {
 @objc public class PurchasesUserModelObjc: NSObject {
 
   @objc public static func preparePurchasesUserModel() {
-    configureRevCat()
+    guard configureRevCat() else {
+      return
+    }
+
     EntitlementsManager.shared.startUpdates()
     _ = PurchasesUserModel.shared
   }

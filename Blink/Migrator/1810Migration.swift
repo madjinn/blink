@@ -32,6 +32,7 @@
 
 import Foundation
 import CoreData
+import BlinkConfig
 
 
 class MigrationFileProviderReplicatedExtension: MigrationStep {
@@ -65,6 +66,10 @@ class MigrationFileProviderReplicatedExtension: MigrationStep {
   }
 
   private func deleteFileProviderStorage() {
+    guard !XCConfig.infoPlistGroupID().isEmpty else {
+      return
+    }
+
     // Clean up the old File Provider path
     let fileProviderURL = NSFileProviderManager.default.documentStorageURL
 
