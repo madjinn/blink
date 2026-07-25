@@ -109,6 +109,19 @@ jobs:
           wait "$launch_pid" 2>/dev/null || true
           wait "$log_pid" 2>/dev/null || true
 
+      - name: Run terminal interaction UI test
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Blink.xcodeproj \
+            -scheme RemoteShellUITests \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath "$RUNNER_TEMP/SimulatorDerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/RemoteShellUITests.xcresult" \
+            test | tee "$RUNNER_TEMP/ui-tests-xcodebuild.log"
+
       - name: Upload Simulator diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -120,6 +133,8 @@ jobs:
             ${{ runner.temp }}/simulator-xcodebuild.log
             ${{ runner.temp }}/simulator-console.log
             ${{ runner.temp }}/simulator-system.log
+            ${{ runner.temp }}/ui-tests-xcodebuild.log
+            ${{ runner.temp }}/RemoteShellUITests.xcresult
             ${{ runner.temp }}/*.ips
             ${{ runner.temp }}/*.crash
 
