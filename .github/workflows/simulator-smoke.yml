@@ -1,0 +1,128 @@
+name: Simulator smoke test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - personal-testflight
+
+permissions:
+  contents: read
+
+concurrency:
+  group: remoteshell-simulator-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  launch:
+    name: Launch for 30 seconds
+    runs-on: macos-26
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out Blink and submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Resolve frameworks
+        run: ./get_frameworks.sh
+
+      - name: Fetch terminal resources
+        run: ./get_resources.sh
+
+      - name: Configure personal build
+        run: cp personal_setup.xcconfig developer_setup.xcconfig
+
+      - name: Select and boot iPhone Simulator
+        run: |
+          simulator_udid="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)["devices"]
+          for runtime in sorted(data, reverse=True):
+              if "iOS" not in runtime:
+                  continue
+              for device in data[runtime]:
+                  if device.get("isAvailable") and device["name"].startswith("iPhone"):
+                      print(device["udid"])
+                      raise SystemExit
+          raise SystemExit("No available iPhone Simulator")
+          ')"
+          echo "SIMULATOR_UDID=$simulator_udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$simulator_udid" || true
+          xcrun simctl bootstatus "$simulator_udid" -b
+
+      - name: Build for Simulator
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Blink.xcodeproj \
+            -scheme Blink \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath "$RUNNER_TEMP/SimulatorDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM='' \
+            build | tee "$RUNNER_TEMP/simulator-xcodebuild.log"
+
+      - name: Install and launch
+        run: |
+          set -euo pipefail
+          app="$RUNNER_TEMP/SimulatorDerivedData/Build/Products/Release-iphonesimulator/Blink.app"
+          test -d "$app"
+          xcrun simctl install "$SIMULATOR_UDID" "$app"
+
+          xcrun simctl spawn "$SIMULATOR_UDID" log stream \
+            --style compact \
+            --level debug \
+            --predicate 'process == "Blink"' \
+            > "$RUNNER_TEMP/simulator-system.log" 2>&1 &
+          log_pid=$!
+
+          set +e
+          xcrun simctl launch \
+            --terminate-running-process \
+            --console \
+            "$SIMULATOR_UDID" \
+            dev.madjinn.remoteshell \
+            > "$RUNNER_TEMP/simulator-console.log" 2>&1 &
+          launch_pid=$!
+          set -e
+
+          sleep 30
+          if ! kill -0 "$launch_pid" 2>/dev/null; then
+            set +e
+            wait "$launch_pid"
+            launch_status=$?
+            set -e
+            echo "App terminated during the startup smoke test (status $launch_status)."
+            find "$HOME/Library/Logs/DiagnosticReports" -type f -mmin -10 -print \
+              -exec cp '{}' "$RUNNER_TEMP/" ';' 2>/dev/null || true
+            kill "$log_pid" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "App remained alive for 30 seconds."
+          kill "$launch_pid" "$log_pid" 2>/dev/null || true
+          wait "$launch_pid" 2>/dev/null || true
+          wait "$log_pid" 2>/dev/null || true
+
+      - name: Upload Simulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: remoteshell-simulator-${{ github.run_number }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/simulator-xcodebuild.log
+            ${{ runner.temp }}/simulator-console.log
+            ${{ runner.temp }}/simulator-system.log
+            ${{ runner.temp }}/*.ips
+            ${{ runner.temp }}/*.crash
+
+      - name: Shut down Simulator
+        if: always()
+        run: xcrun simctl shutdown "$SIMULATOR_UDID" || true
