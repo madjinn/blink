@@ -1,0 +1,199 @@
+name: TestFlight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: remoteshell-testflight
+  cancel-in-progress: false
+
+jobs:
+  build-and-upload:
+    name: Sign and upload to TestFlight
+    runs-on: macos-26
+    timeout-minutes: 120
+
+    steps:
+      - name: Check required secrets
+        env:
+          P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY_BASE64: ${{ secrets.ASC_PRIVATE_KEY_BASE64 }}
+        run: |
+          test -n "$P12_BASE64"
+          test -n "$P12_PASSWORD"
+          test -n "$PROFILE_BASE64"
+          test -n "$ASC_KEY_ID"
+          test -n "$ASC_ISSUER_ID"
+          test -n "$ASC_PRIVATE_KEY_BASE64"
+
+      - name: Check out Blink and submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Resolve frameworks
+        run: ./get_frameworks.sh
+
+      - name: Fetch terminal resources
+        run: ./get_resources.sh
+
+      - name: Configure personal build
+        run: cp personal_setup.xcconfig developer_setup.xcconfig
+
+      - name: Install signing certificate and profile
+        env:
+          P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          keychain="$RUNNER_TEMP/remoteshell-signing.keychain-db"
+          keychain_password="$(uuidgen)$(uuidgen)"
+          p12="$RUNNER_TEMP/distribution.p12"
+          profile="$RUNNER_TEMP/distribution.mobileprovision"
+          profile_plist="$RUNNER_TEMP/profile.plist"
+
+          printf '%s' "$P12_BASE64" | base64 -D > "$p12"
+          printf '%s' "$PROFILE_BASE64" | base64 -D > "$profile"
+
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$p12" -k "$keychain" -P "$P12_PASSWORD" -A -t cert -f pkcs12
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security find-identity -v -p codesigning "$keychain"
+
+          security cms -D -i "$profile" > "$profile_plist"
+          profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$profile_plist")"
+          profile_app_id="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$profile_plist")"
+          test "$profile_app_id" = "2S8DQ977WP.dev.madjinn.remoteshell"
+
+          profiles_dir="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$profiles_dir"
+          cp "$profile" "$profiles_dir/$profile_uuid.mobileprovision"
+
+          {
+            echo "SIGNING_KEYCHAIN=$keychain"
+            echo "PROFILE_UUID=$profile_uuid"
+            echo "INSTALLED_PROFILE=$profiles_dir/$profile_uuid.mobileprovision"
+          } >> "$GITHUB_ENV"
+
+      - name: Archive signed app
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Blink.xcodeproj \
+            -scheme Blink \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/RemoteShell.xcarchive" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY='Apple Distribution' \
+            DEVELOPMENT_TEAM=2S8DQ977WP \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $SIGNING_KEYCHAIN" \
+            archive | tee "$RUNNER_TEMP/xcodebuild.log"
+
+      - name: Verify archive
+        run: |
+          app="$RUNNER_TEMP/RemoteShell.xcarchive/Products/Applications/Blink.app"
+          test -d "$app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = "dev.madjinn.remoteshell"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$app/Info.plist")" = "RemoteShell Dev"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$app/Info.plist")" = "true"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$app/Info.plist")" = "true"
+          test ! -d "$app/PlugIns" || ! find "$app/PlugIns" -name '*.appex' -print -quit | grep -q .
+          codesign --verify --deep --strict --verbose=2 "$app"
+
+      - name: Export IPA
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>destination</key>
+            <string>export</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>teamID</key>
+            <string>2S8DQ977WP</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>dev.madjinn.remoteshell</key>
+              <string>$PROFILE_UUID</string>
+            </dict>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$RUNNER_TEMP/RemoteShell.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+
+          ipa="$(find "$RUNNER_TEMP/export" -maxdepth 1 -name '*.ipa' -print -quit)"
+          test -n "$ipa"
+          echo "IPA_PATH=$ipa" >> "$GITHUB_ENV"
+
+      - name: Upload to App Store Connect
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY_BASE64: ${{ secrets.ASC_PRIVATE_KEY_BASE64 }}
+        run: |
+          private_keys="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$private_keys"
+          key_path="$private_keys/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s' "$ASC_PRIVATE_KEY_BASE64" | base64 -D > "$key_path"
+          chmod 600 "$key_path"
+
+          xcrun altool \
+            --upload-app \
+            --type ios \
+            --file "$IPA_PATH" \
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Upload IPA and build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: remoteshell-testflight-${{ github.run_number }}
+          if-no-files-found: warn
+          retention-days: 3
+          path: |
+            ${{ runner.temp }}/export/*.ipa
+            ${{ runner.temp }}/xcodebuild.log
+            ${{ runner.temp }}/export/DistributionSummary.plist
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          if [[ -n "${SIGNING_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$SIGNING_KEYCHAIN" || true
+          fi
+          if [[ -n "${INSTALLED_PROFILE:-}" ]]; then
+            rm -f "$INSTALLED_PROFILE"
+          fi
+          rm -rf "$HOME/.appstoreconnect/private_keys"
