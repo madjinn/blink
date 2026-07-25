@@ -758,8 +758,6 @@
 			dstSubfolderSpec = 13;
 			files = (
 				D218069C25CC27C100B98902 /* AppKitBridge.bundle in Embed PlugIns */,
-				9827126B262E4BDB00F883FA /* BlinkFileProviderExtension.appex in Embed PlugIns */,
-				BD9EA1D32718E19000874007 /* BlinkFileProviderExtensionUI.appex in Embed PlugIns */,
 			);
 			name = "Embed PlugIns";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -2855,9 +2853,7 @@
 				07FABB9825C9AEC100E1CC2C /* PBXTargetDependency */,
 				07FABBC325C9AECF00E1CC2C /* PBXTargetDependency */,
 				D218069E25CC27C100B98902 /* PBXTargetDependency */,
-				9827126A262E4BDB00F883FA /* PBXTargetDependency */,
 				BDCB7164268E1577007D7047 /* PBXTargetDependency */,
-				BD9EA1D22718E19000874007 /* PBXTargetDependency */,
 				D2A9B2FA272E6F26009FCBDE /* PBXTargetDependency */,
 				D22277E02A26115300D4C708 /* PBXTargetDependency */,
 				BDECEA492CDE7544007BBCF6 /* PBXTargetDependency */,

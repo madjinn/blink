@@ -28,7 +28,7 @@ jobs:
         run: ./get_resources.sh
 
       - name: Configure personal build
-        run: cp template_setup.xcconfig developer_setup.xcconfig
+        run: cp personal_setup.xcconfig developer_setup.xcconfig
 
       - name: Build without signing
         run: |
@@ -45,11 +45,18 @@ jobs:
             DEVELOPMENT_TEAM='' \
             build | tee "$RUNNER_TEMP/xcodebuild.log"
 
-      - name: Package unsigned app
+      - name: Verify and package unsigned app
         if: success()
         run: |
           app="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/Blink.app"
           test -d "$app"
+
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = "dev.madjinn.remoteshell"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$app/Info.plist")" = "RemoteShell Dev"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$app/Info.plist")" = "true"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$app/Info.plist")" = "true"
+          test ! -d "$app/PlugIns" || ! find "$app/PlugIns" -name '*.appex' -print -quit | grep -q .
+
           ditto -c -k --keepParent "$app" "$RUNNER_TEMP/Blink-unsigned.zip"
 
       - name: Upload build and log

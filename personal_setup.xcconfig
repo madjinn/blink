@@ -1,0 +1,17 @@
+// Personal TestFlight build settings. Apple Team IDs and bundle IDs are public metadata.
+
+TEAM_ID = 2S8DQ977WP
+BUNDLE_ID = dev.madjinn.remoteshell
+KEYCHAIN_ID1 = dev.madjinn.remoteshell
+APP_DISPLAY_NAME = RemoteShell Dev
+
+SWIFT_ACTIVE_COMPILATION_CONDITIONS[config=Debug] = BLINK_PUBLISHING_OPTION_DEVELOPER
+SWIFT_ACTIVE_COMPILATION_CONDITIONS[config=Release] = BLINK_PUBLISHING_OPTION_TESTFLIGHT
+
+BLINK_MIGRATION_SCHEME = remoteshelldev
+
+WHATS_NEW_URL = http:/$()/localhost/whats-new
+CONVERSION_OPPORTUNITY_URL = http:/$()/localhost/conversionOpportunity
+WHATS_NEW_GITHUB_URL = http:/$()/localhost/conversionOpportunity
+
+BLINK_APP_FONT = JetBrains Mono
