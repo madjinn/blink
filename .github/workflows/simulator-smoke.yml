@@ -15,8 +15,16 @@ concurrency:
 
 jobs:
   launch:
-    name: Launch for 30 seconds
-    runs-on: macos-26
+    name: Launch on ${{ matrix.runtime }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            runtime: iOS 18
+          - runner: macos-26
+            runtime: iOS 26
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
 
     steps:
@@ -126,7 +134,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: remoteshell-simulator-${{ github.run_number }}
+          name: remoteshell-simulator-${{ matrix.runner }}-${{ github.run_number }}
           if-no-files-found: warn
           retention-days: 7
           path: |
