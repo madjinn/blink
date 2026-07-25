@@ -100,7 +100,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY='Apple Distribution' \
             DEVELOPMENT_TEAM=2S8DQ977WP \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
+            PERSONAL_PROFILE_UUID="$PROFILE_UUID" \
             CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             OTHER_CODE_SIGN_FLAGS="--keychain $SIGNING_KEYCHAIN" \
             archive | tee "$RUNNER_TEMP/xcodebuild.log"
