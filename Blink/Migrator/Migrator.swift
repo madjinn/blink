@@ -55,14 +55,21 @@ import Foundation
 
       do {
         try step.execute()
-        currentVersion = step.version
+      } catch {
+        NSLog("Migration step \(step.version) failed and will be skipped: \(error)")
+      }
+
+      // Migration failures should never make the app silently close on launch.
+      // Mark the step as handled so a bad local file cannot trap users in a
+      // launch/exit loop; the app can still recreate missing defaults later.
+      currentVersion = step.version
+      do {
         try String(currentVersion)
           .data(using: .utf8)!
           .write(to: migratorFileURL,
                  options:  [.atomic, .noFileProtection])
       } catch {
-        print(error)
-        exit(0)
+        NSLog("Could not write migrator state for step \(step.version): \(error)")
       }
     }
   }
