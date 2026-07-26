@@ -76,8 +76,18 @@ NSString *__iCloudsDriveDocumentsPath = nil;
     }
 
     // Builds without a File Provider extension do not need an App Group.
-    // Keep their home directory in the normal application container.
-    __groupContainerPath = path.length > 0 ? path : NSHomeDirectory();
+    // Physical iOS devices do not permit creating arbitrary directories at the
+    // app-container root (although Simulator does). Use Application Support as
+    // the writable replacement for the shared App Group container.
+    if (path.length == 0) {
+      NSURL *applicationSupportURL = [[fm URLsForDirectory:NSApplicationSupportDirectory
+                                                 inDomains:NSUserDomainMask] firstObject];
+      path = [[applicationSupportURL URLByAppendingPathComponent:@"Blink"
+                                                     isDirectory:YES] path];
+      [self _ensureFolderAtPath:path];
+    }
+
+    __groupContainerPath = path;
   }
   return __groupContainerPath;
 }
