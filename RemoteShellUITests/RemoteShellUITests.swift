@@ -29,6 +29,12 @@ final class RemoteShellUITests: XCTestCase {
     }
 
     app.typeText("echo REMOTESHELL_UI_SMOKE_OK\n")
+    sleep(2)
+
+    // A fresh terminal-only install used to omit ~/.blink/ssh_global, making
+    // every SSH command fail before it attempted a connection.
+    app.typeText("rm ~/.blink/ssh_global\n")
+    app.typeText("ssh -G remoteshell-config-smoke\n")
     sleep(5)
 
     XCTAssertEqual(

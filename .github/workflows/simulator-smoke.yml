@@ -130,6 +130,17 @@ jobs:
             -resultBundlePath "$RUNNER_TEMP/RemoteShellUITests.xcresult" \
             test | tee "$RUNNER_TEMP/ui-tests-xcodebuild.log"
 
+      - name: Verify SSH configuration bootstrap
+        run: |
+          set -euo pipefail
+          data_container="$(xcrun simctl get_app_container "$SIMULATOR_UDID" dev.madjinn.remoteshell data)"
+
+          test -s "$data_container/home/.blink/ssh_global"
+          test -f "$data_container/home/.blink/ssh_config"
+          test -f "$data_container/home/.ssh/config"
+          grep -q '^Include ssh_config$' "$data_container/home/.blink/ssh_global"
+          grep -q '^Include ../\.ssh/config$' "$data_container/home/.blink/ssh_global"
+
       - name: Upload Simulator diagnostics
         if: always()
         uses: actions/upload-artifact@v4
