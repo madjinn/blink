@@ -14,6 +14,7 @@ import os
 import plistlib
 import struct
 from pathlib import Path
+from typing import Optional
 
 ROOT = Path(__file__).resolve().parents[1] / "xcfs/.build/artifacts/xcfs"
 TARGET_VERSION = os.environ.get("BLINK_MIN_IOS_VERSION", "17.6")
@@ -29,13 +30,18 @@ MH_MAGIC_64 = 0xFEEDFACF
 AR_MAGIC = b"!<arch>\n"
 
 
-def encode_version(version: str) -> int:
-    parts = [int(part) for part in version.split(".")]
+def encode_version(version: str) -> Optional[int]:
+    try:
+        parts = [int(part) for part in version.split(".")]
+    except ValueError:
+        return None
     parts = (parts + [0, 0])[:3]
     return (parts[0] << 16) | (parts[1] << 8) | parts[2]
 
 
 TARGET_ENCODED = encode_version(TARGET_VERSION)
+if TARGET_ENCODED is None:
+    raise SystemExit(f"Invalid BLINK_MIN_IOS_VERSION: {TARGET_VERSION}")
 
 
 def decode_version(version: int) -> str:
@@ -122,7 +128,8 @@ def patch_minimum_os_versions(root: Path) -> int:
             info = plistlib.load(stream)
 
         current = info.get("MinimumOSVersion")
-        if isinstance(current, str) and encode_version(current) > TARGET_ENCODED:
+        current_encoded = encode_version(current) if isinstance(current, str) else None
+        if current_encoded is not None and current_encoded > TARGET_ENCODED:
             info["MinimumOSVersion"] = TARGET_VERSION
             with info_path.open("wb") as stream:
                 plistlib.dump(info, stream, fmt=plistlib.FMT_BINARY, sort_keys=False)
@@ -132,7 +139,8 @@ def patch_minimum_os_versions(root: Path) -> int:
 
 def main() -> None:
     if not ROOT.is_dir():
-        raise SystemExit(f"XCFramework artifacts not found: {ROOT}")
+        print(f"Warning: XCFramework artifacts not found: {ROOT}")
+        return
 
     patched_binaries = 0
     for binary in framework_binaries(ROOT):
@@ -151,7 +159,11 @@ def main() -> None:
             patched_binaries += 1
             print(f"Patched {rel}: {', '.join(changes)}")
 
-    patched_plists = patch_minimum_os_versions(ROOT)
+    try:
+        patched_plists = patch_minimum_os_versions(ROOT)
+    except Exception as exc:
+        print(f"Warning: could not patch framework Info.plists: {exc}")
+        patched_plists = 0
 
     if patched_binaries == 0 and patched_plists == 0:
         print(f"All downloaded framework deployment targets are already iOS {TARGET_VERSION} or lower")
@@ -163,4 +175,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        # Framework patching is a compatibility step. Never fail the build here;
+        # surface the problem in logs and allow the normal build/export checks to run.
+        print(f"Warning: framework deployment target patching failed: {exc}")
