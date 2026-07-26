@@ -50,7 +50,56 @@ public struct BKConfig {
   public init() throws {
     _allHosts = BKHosts.allHosts()
     _allIdentities = BKPubKey.all()
+    try Self.ensureSSHConfigFiles()
     bkSSHConfig = try SSHConfig.parse(url: BlinkPaths.blinkGlobalSSHConfigFileURL())
+  }
+
+  private static func ensureSSHConfigFiles() throws {
+    let fm = FileManager.default
+
+    guard
+      let blinkConfigURL = BlinkPaths.blinkSSHConfigFileURL(),
+      let globalConfigURL = BlinkPaths.blinkGlobalSSHConfigFileURL(),
+      let sshURL = BlinkPaths.sshURL()
+    else {
+      return
+    }
+
+    try fm.createDirectory(
+      at: globalConfigURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true,
+      attributes: nil
+    )
+    try fm.createDirectory(
+      at: sshURL,
+      withIntermediateDirectories: true,
+      attributes: [.protectionKey: FileProtectionType.none]
+    )
+
+    if !fm.fileExists(atPath: blinkConfigURL.path) {
+      BKHosts.saveAllToSSHConfig()
+    }
+
+    let userConfigURL = sshURL.appendingPathComponent("config")
+    if !fm.fileExists(atPath: userConfigURL.path) {
+      try Data().write(to: userConfigURL, options: [.atomic, .noFileProtection])
+    }
+
+    if !fm.fileExists(atPath: globalConfigURL.path) {
+      let configString = """
+      Include ssh_config
+      Include ../.ssh/config
+
+      Host *
+        ControlMaster auto
+        SendEnv LANG
+        Compression yes
+        CompressionLevel 6
+      """
+      try configString
+        .data(using: .utf8)!
+        .write(to: globalConfigURL, options: [.atomic, .noFileProtection])
+    }
   }
 
   private func _host(_ host: String) -> BKHosts? {
