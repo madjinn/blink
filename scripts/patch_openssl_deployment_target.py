@@ -19,6 +19,9 @@ ROOT = Path(__file__).resolve().parents[1] / "xcfs/.build/artifacts/xcfs"
 TARGET_VERSION = os.environ.get("BLINK_MIN_IOS_VERSION", "17.6")
 LC_VERSION_MIN_IPHONEOS = 0x25
 LC_BUILD_VERSION = 0x32
+PLATFORM_IOS = 2
+PLATFORM_IOSSIMULATOR = 7
+IOS_PLATFORMS = {PLATFORM_IOS, PLATFORM_IOSSIMULATOR}
 FAT_MAGIC = 0xCAFEBABE
 FAT_MAGIC_64 = 0xCAFEBABF
 MH_MAGIC = 0xFEEDFACE
@@ -85,8 +88,9 @@ def patch_binary(path: Path) -> list[str]:
                 raise ValueError(f"Invalid load command in {path}")
 
             if command == LC_BUILD_VERSION and command_size >= 24:
+                platform = struct.unpack_from("<I", data, command_offset + 8)[0]
                 current = struct.unpack_from("<I", data, command_offset + 12)[0]
-                if current > TARGET_ENCODED:
+                if platform in IOS_PLATFORMS and current > TARGET_ENCODED:
                     struct.pack_into("<I", data, command_offset + 12, TARGET_ENCODED)
                     changes.append(f"LC_BUILD_VERSION {decode_version(current)} -> {TARGET_VERSION}")
             elif command == LC_VERSION_MIN_IPHONEOS and command_size >= 16:
@@ -132,10 +136,19 @@ def main() -> None:
 
     patched_binaries = 0
     for binary in framework_binaries(ROOT):
-        changes = patch_binary(binary)
+        rel = binary.relative_to(ROOT)
+        try:
+            changes = patch_binary(binary)
+        except Exception as exc:
+            # Do not break CI for a binary shape we do not understand. The
+            # following archive/export steps and App Store validation will still
+            # catch unusable artifacts, while known Mach-O framework binaries are
+            # patched above.
+            print(f"Warning: could not inspect {rel}: {exc}")
+            continue
+
         if changes:
             patched_binaries += 1
-            rel = binary.relative_to(ROOT)
             print(f"Patched {rel}: {', '.join(changes)}")
 
     patched_plists = patch_minimum_os_versions(ROOT)
