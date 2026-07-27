@@ -35,7 +35,19 @@ final class RemoteShellUITests: XCTestCase {
     // every SSH command fail before it attempted a connection.
     app.typeText("rm ~/.blink/ssh_global\n")
     app.typeText("ssh -G remoteshell-config-smoke\n")
-    sleep(5)
+    sleep(3)
+
+    // Exercise the renderer with AI-style streamed output while scrolling.
+    // This catches WebKit write/scroll queue regressions that simple commands miss.
+    app.typeText("awk 'BEGIN { for (i = 0; i < 2000; i++) print \"REMOTESHELL_RENDER_SMOKE\", i }'\n")
+    sleep(6)
+    if terminal.exists && terminal.isHittable {
+      terminal.swipeDown()
+      terminal.swipeDown()
+      terminal.tap()
+    }
+    app.typeText("echo REMOTESHELL_AFTER_RENDER_SMOKE\n")
+    sleep(3)
 
     XCTAssertEqual(
       app.state,

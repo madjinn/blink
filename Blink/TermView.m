@@ -61,7 +61,7 @@ struct winsize __winSizeFromJSON(NSDictionary *json) {
   
   BOOL _jsIsBusy;
   dispatch_queue_t _jsQueue;
-  NSMutableString *_jsBuffer;
+  NSMutableArray *_jsOutputQueue;
   CGRect _currentBounds;
   UIEdgeInsets _currentAdditionalInsets;
   NSTimer *_layoutDebounceTimer;
@@ -88,7 +88,7 @@ struct winsize __winSizeFromJSON(NSDictionary *json) {
   _layoutDebounceTimer = nil;
   _currentBounds = CGRectZero;
   _jsQueue = dispatch_queue_create(@"TermView.js".UTF8String, DISPATCH_QUEUE_SERIAL);
-  _jsBuffer = [[NSMutableString alloc] init];
+  _jsOutputQueue = [[NSMutableArray alloc] init];
   _touchesArray = [[NSMutableArray alloc] init];
 
   [self _addWebView];
@@ -490,56 +490,102 @@ struct winsize __winSizeFromJSON(NSDictionary *json) {
   [self _evalJSScript: term_displayInput(input, BLKDefaults.isKeyCastsOn)];
 }
 
-// Write data to terminal control
+// Keep terminal output ordered and bounded. Mosh may split UTF-8 and use
+// writeB64 while regular output is already rendering; the old implementation
+// started a second evaluateJavaScript call and let keyboard/scroll scripts clear
+// the shared busy flag. AI TUIs can hit that race frequently with streamed output.
+static const NSUInteger TermViewJSOutputChunkLength = 16 * 1024;
+
 - (void)write:(NSString *)data
 {
   dispatch_async(_jsQueue, ^{
-    [_jsBuffer appendString:data];
-    
-    if (_jsIsBusy) {
-      return;
+    if (data.length > 0) {
+      id last = [_jsOutputQueue lastObject];
+      if ([last isKindOfClass:[NSMutableString class]]) {
+        [(NSMutableString *)last appendString:data];
+      } else {
+        [_jsOutputQueue addObject:[data mutableCopy]];
+      }
     }
-
-    NSString * buffer = _jsBuffer;
-    if (buffer.length == 0) {
-      return;
-    }
-  
-    _jsIsBusy = YES;
-    _jsBuffer = [[NSMutableString alloc] init];
-    
-    NSString *jsScript = term_write(buffer);
-    [self _evalJSScript:jsScript];
+    [self _drainJSOutputQueue];
   });
 }
 
 - (void)writeB64:(NSData *)data
 {
-  dispatch_async(_jsQueue, ^{
-    _jsIsBusy = YES;
+  if (data.length == 0) {
+    return;
+  }
 
-    NSString * buffer = _jsBuffer;
-    _jsBuffer = [[NSMutableString alloc] init];
-    
-    NSString *jsScript = term_writeB64(data);
-    
-    if (buffer.length > 0) {
-      jsScript = [term_write(buffer) stringByAppendingString:jsScript];
+  dispatch_async(_jsQueue, ^{
+    [_jsOutputQueue addObject:[data copy]];
+    [self _drainJSOutputQueue];
+  });
+}
+
+- (void)_drainJSOutputQueue
+{
+  if (_jsIsBusy || _jsOutputQueue.count == 0) {
+    return;
+  }
+
+  id operation = [_jsOutputQueue firstObject];
+  NSString *jsScript = nil;
+
+  if ([operation isKindOfClass:[NSMutableString class]]) {
+    NSMutableString *text = operation;
+    if (text.length == 0) {
+      [_jsOutputQueue removeObjectAtIndex:0];
+      [self _drainJSOutputQueue];
+      return;
     }
-    [self _evalJSScript:jsScript];
+
+    NSUInteger length = MIN(text.length, TermViewJSOutputChunkLength);
+    // Do not split a UTF-16 surrogate pair between JavaScript calls.
+    if (length < text.length && length > 0) {
+      unichar last = [text characterAtIndex:length - 1];
+      unichar next = [text characterAtIndex:length];
+      if (CFStringIsSurrogateHighCharacter(last) && CFStringIsSurrogateLowCharacter(next)) {
+        length -= 1;
+      }
+    }
+
+    NSString *chunk = [text substringToIndex:length];
+    [text deleteCharactersInRange:NSMakeRange(0, length)];
+    if (text.length == 0) {
+      [_jsOutputQueue removeObjectAtIndex:0];
+    }
+    jsScript = term_write(chunk);
+  } else if ([operation isKindOfClass:[NSData class]]) {
+    [_jsOutputQueue removeObjectAtIndex:0];
+    jsScript = term_writeB64(operation);
+  } else {
+    [_jsOutputQueue removeObjectAtIndex:0];
+    [self _drainJSOutputQueue];
+    return;
+  }
+
+  _jsIsBusy = YES;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [_webView evaluateJavaScript:jsScript completionHandler:^(id result, NSError *error) {
+      if (error) {
+        NSLog(@"Terminal output JavaScript error: %@", error);
+      }
+      dispatch_async(_jsQueue, ^{
+        _jsIsBusy = NO;
+        [self _drainJSOutputQueue];
+      });
+    }];
   });
 }
 
 - (void)_evalJSScript:(NSString *)jsScript
 {
   dispatch_async(dispatch_get_main_queue(), ^{
-    [_webView evaluateJavaScript: jsScript completionHandler:^(id result, NSError *error) {
-      dispatch_async(_jsQueue, ^{
-        _jsIsBusy = NO;
-        if (_jsBuffer.length > 0) {
-          [self write:@""];
-        }
-      });
+    [_webView evaluateJavaScript:jsScript completionHandler:^(id result, NSError *error) {
+      if (error) {
+        NSLog(@"Terminal JavaScript error: %@", error);
+      }
     }];
   });
 }

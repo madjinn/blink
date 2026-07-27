@@ -108,6 +108,10 @@ class UIScrollViewWithoutHitTest: UIScrollView {
   private var _mouseDragMode: Bool = false
   private var _mouseDragStartPoint: CGPoint? = nil
   private var _cmdKeyPressed: Bool = false
+  private var _scrollJavaScriptBusy = false
+  private var _pendingScrollOffset: CGPoint? = nil
+  private var _pendingWheelDeltaY: CGFloat = 0
+  private var _pendingWheelPoint: CGPoint? = nil
 
   @objc var focused: Bool = false;
   @objc var hasSelection: Bool = false {
@@ -172,7 +176,7 @@ class UIScrollViewWithoutHitTest: UIScrollView {
       _wkWebView?.configuration.userContentController.removeScriptMessageHandler(forName: _handlerName)
 
       for r in allRecognizers {
-        _wkWebView?.addGestureRecognizer(r)
+        _wkWebView?.removeGestureRecognizer(r)
       }
 
       if let interaction = _pointerInteraction as? UIPointerInteraction {
@@ -425,6 +429,54 @@ class UIScrollViewWithoutHitTest: UIScrollView {
     }
   }
 
+  private func _enqueueScroll(offset: CGPoint) {
+    _pendingScrollOffset = offset
+    _drainScrollJavaScript()
+  }
+
+  private func _enqueueWheel(point: CGPoint, deltaY: CGFloat) {
+    _pendingWheelPoint = point
+    _pendingWheelDeltaY += deltaY
+    _drainScrollJavaScript()
+  }
+
+  private func _drainScrollJavaScript() {
+    guard !_scrollJavaScriptBusy else {
+      return
+    }
+    guard let webView = _wkWebView else {
+      _pendingScrollOffset = nil
+      _pendingWheelDeltaY = 0
+      _pendingWheelPoint = nil
+      return
+    }
+
+    let script: String
+    if abs(_pendingWheelDeltaY) > .ulpOfOne {
+      let deltaY = _pendingWheelDeltaY
+      let point = _pendingWheelPoint ?? CGPoint(x: webView.bounds.midX, y: webView.bounds.midY)
+      _pendingWheelDeltaY = 0
+      _pendingWheelPoint = nil
+      script = "term_reportWheelEvent(\"wheel\", \(point.x), \(point.y), 0, \(deltaY));"
+    } else if let offset = _pendingScrollOffset {
+      _pendingScrollOffset = nil
+      script = "\(_jsScrollerPath).reportScroll(\(offset.x), \(offset.y));"
+    } else {
+      return
+    }
+
+    _scrollJavaScriptBusy = true
+    webView.evaluateJavaScript(script) { [weak self] _, _ in
+      // Coalesce updates to display cadence. Inertial touch scrolling can
+      // otherwise enqueue hundreds of WebKit calls while a TUI is rendering.
+      DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(16)) {
+        guard let self = self else { return }
+        self._scrollJavaScriptBusy = false
+        self._drainScrollJavaScript()
+      }
+    }
+  }
+
 }
 
 extension WKWebViewGesturesInteraction: UIGestureRecognizerDelegate {
@@ -442,7 +494,7 @@ extension WKWebViewGesturesInteraction: UIScrollViewDelegate {
     let offset = scrollView.contentOffset
     
     if scrollView === _scrollView {
-      _wkWebView?.evaluateJavaScript("\(_jsScrollerPath).reportScroll(\(offset.x), \(offset.y));", completionHandler: nil)
+      _enqueueScroll(offset: offset)
       return
     }
     
@@ -484,7 +536,7 @@ extension WKWebViewGesturesInteraction: UIScrollViewDelegate {
         dY *= -1.0;
       }
       
-      _wkWebView?.evaluateJavaScript("term_reportWheelEvent(\"wheel\", \(point.x), \(point.y), \(0), \(dY));", completionHandler: nil)
+      _enqueueWheel(point: point, deltaY: dY)
     }
   }
   
