@@ -36,6 +36,8 @@ final class RemoteShellUITests: XCTestCase {
     app.typeText("rm ~/.blink/ssh_global\n")
     app.typeText("ssh -G remoteshell-config-smoke\n")
     sleep(3)
+    // Capture the ssh output before the render smoke scrolls it away.
+    attachDiagnostics(for: app, name: "after-ssh-config")
 
     // Exercise the renderer with AI-style streamed output while scrolling.
     // This catches WebKit write/scroll queue regressions that simple commands miss.

@@ -120,6 +120,15 @@ jobs:
       - name: Run terminal interaction UI test
         run: |
           set -o pipefail
+
+          xcrun simctl spawn "$SIMULATOR_UDID" log stream \
+            --style compact \
+            --level debug \
+            --predicate 'process == "Blink"' \
+            > "$RUNNER_TEMP/ui-tests-system.log" 2>&1 &
+          log_pid=$!
+
+          test_status=0
           xcodebuild \
             -project Blink.xcodeproj \
             -scheme RemoteShellUITests \
@@ -128,7 +137,11 @@ jobs:
             -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
             -derivedDataPath "$RUNNER_TEMP/SimulatorDerivedData" \
             -resultBundlePath "$RUNNER_TEMP/RemoteShellUITests.xcresult" \
-            test | tee "$RUNNER_TEMP/ui-tests-xcodebuild.log"
+            test | tee "$RUNNER_TEMP/ui-tests-xcodebuild.log" || test_status=$?
+
+          kill "$log_pid" 2>/dev/null || true
+          wait "$log_pid" 2>/dev/null || true
+          exit "$test_status"
 
       - name: Verify SSH configuration bootstrap
         run: |
@@ -144,6 +157,10 @@ jobs:
               echo "::error::$description"
               echo "Data container contents:"
               find "$data_container" -maxdepth 6 -print | sort
+              echo "Shell history:"
+              cat "$home/.blink/history.txt" || true
+              echo "ssh_global:"
+              cat "$home/.blink/ssh_global" || true
               exit 1
             fi
           }
@@ -170,6 +187,7 @@ jobs:
             ${{ runner.temp }}/simulator-console.log
             ${{ runner.temp }}/simulator-system.log
             ${{ runner.temp }}/ui-tests-xcodebuild.log
+            ${{ runner.temp }}/ui-tests-system.log
             ${{ runner.temp }}/RemoteShellUITests.xcresult
             ${{ runner.temp }}/*.ips
             ${{ runner.temp }}/*.crash
